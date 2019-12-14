@@ -18,6 +18,12 @@ s.waitForBoot {
 		Out.ar(0, son * 0.1);
 	}).add;
 
+	SynthDef(\singrain, { |midi = 60, amp = 0.4, sustain = 0.5|
+		var sig;
+		sig = SinOsc.ar(midi.midicps, 0, amp) * EnvGen.kr(Env.perc(0.01, sustain), doneAction: 2);
+		Out.ar(0, sig ! 2);    // sig ! 2 is the same as [sig, sig]
+	}).add;
+
 	s.sync;
 
 
@@ -54,13 +60,13 @@ s.waitForBoot {
 			var closedChord = ~chords.choose + ~penta.choose % 12;
 			// closedChord.postln;
 			~octave = Array.rand2(8, 1) * 12;
-			~chord = closedChord + ~octave + 60;
+			~chord = closedChord + ~octave + 72;
 			~chord.sort;
 			("Group chord: " ++ ~chord).postln;
 
 			~network.do{ |addr|
 				addr.postln;
-				~network[0].sendMsg('/assign', ~chord[~chord.size.rand], ~chord[~chord.size.rand]);
+				addr.sendMsg('/assign', ~chord[~chord.size.rand], ~chord[~chord.size.rand]);
 			};
 			5.wait;
 		}
@@ -68,7 +74,7 @@ s.waitForBoot {
 
 	t = Task({
 		while {true} {
-			~synth = Synth(\mdapiano, [\midi, ~noteset.choose]);
+			~synth = Synth(\singrain, [\midi, ~noteset.choose]);
 			(0.2.rand + 0.13).wait;
 		}
 	}).play;
