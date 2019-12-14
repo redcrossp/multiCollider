@@ -35,7 +35,7 @@ s.waitForBoot {
 	OSCdef(\cluster3, {|msg, time, addr|
 		// msg.postln;
 		~noteset = [msg[1], msg[2]];
-		// ("Now playing: " ++ ~noteset).postln;
+		("Now playing: " ++ ~noteset).postln;
 	}, '/assign'); // def style
 
 	// piano
@@ -62,6 +62,7 @@ s.waitForBoot {
 	// use to get host IP address
 	// "ifconfig | grep 'inet '".unixCmd;
 
+	TempoClock.tempo = 1;
 	~personalities = ["pessimist", "optimist", "realist", "conservative", "progressive"];
 	~personalityWeights = [1, 1, 1, 1, 1].normalizeSum;
 	~penta = Scale.major.degrees[[0,1,2,4,5]];
@@ -98,7 +99,7 @@ s.waitForBoot {
 			~octave = Array.rand2(8, 2) * 12;
 			~chord = closedChord + ~octave + 66;
 			~chord.sort;
-			// ("Group chord: " ++ ~chord).postln;
+			("Group chord: " ++ ~chord).postln;
 
 			~network.do{ |addr|
 				// addr.postln;
