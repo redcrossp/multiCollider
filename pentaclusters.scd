@@ -28,27 +28,46 @@ s.waitForBoot {
 
 	OSCdef(\cluster2, {|msg, time, addr|
 		~personality = msg[2];
+		~feedback = 0.6.rand + 0.1;
+		switch (~personality)
+		{"pessimist"}
+		{
+			~octaves = [-3, -2];
+			~attackLow = 0.5;
+			~attackDiff = 0.8;
+			~sustainLow = 0.2;
+			~sustainDiff = 0.6;
+			~releaseLow = 0.4;
+			~releaseDiff = 0.6;
+		}
+	~personalities = ["pessimist", "optimist", "realist", "conservative", "progressive"];
+		{"optimist"}
+		{
+			~octaves = [1, 2, 3];
+			~attackLow = 0.0;
+			~attackDiff = 0.02;
+			~sustainLow = 0.0;
+			~sustainDiff = 0.0;
+			~releaseLow = 0.05;
+			~releaseDiff = 0.15;
+		};
+
 		"This computer registered as #% with '%' personality"
 	    	.format(msg[1], ~personality).postln;
 	}, '/personality'); // def style
 
+
 	OSCdef(\cluster3, {|msg, time, addr|
 		// msg.postln;
-		~noteset = [msg[1], msg[2]];
+		~noteset = [msg[1], msg[2]] + (12 * [~octaves.choose, ~octaves.choose]);
 		("Now playing: " ++ ~noteset).postln;
 	}, '/assign'); // def style
 
-	// piano
-	SynthDef(\mdapiano, { |out=0, midi=60, gate=1, vel=80|
-		var son = MdaPiano.ar(midi.midicps, gate, vel, 0.8, 0.8, stereo: 1, sustain: 1);
-		DetectSilence.ar(son, 0.01, doneAction:2);
-		Out.ar(0, son * 0.1);
-	}).add;
 
-	SynthDef(\singrain, { |midi = 60, amp = 0.4, sustain = 0.5|
-		var sig;
-		sig = SinOsc.ar(midi.midicps, 0, amp) * EnvGen.kr(Env.perc(0.01, sustain), doneAction: 2);
-		Out.ar(0, sig ! 2);
+	SynthDef(\clusterpatch, { |midi, feedback, attack, sustain, release|
+		var signal = SinOscFB.ar(midi.midicps, feedback, 1)
+		  * EnvGen.kr(Env.linen(attack, sustain, release, 1, \welch), doneAction: 2);
+		Out.ar(0, signal ! 2);
 	}).add;
 
 	s.sync;
@@ -63,6 +82,15 @@ s.waitForBoot {
 	// "ifconfig | grep 'inet '".unixCmd;
 
 	TempoClock.tempo = 1;
+	    ~personality = "none";
+		~feedback = 0;
+		~attackLow = 0.1;
+		~attackDiff = 0;
+		~sustainLow = 0.1;
+		~sustainDiff = 0;
+		~releaseLow = 0.4;
+		~releaseDiff = 0.2;
+		~octaves = [0];
 	~personalities = ["pessimist", "optimist", "realist", "conservative", "progressive"];
 	~personalityWeights = [1, 1, 1, 1, 1].normalizeSum;
 	~penta = Scale.major.degrees[[0,1,2,4,5]];
@@ -91,13 +119,13 @@ s.waitForBoot {
 	*/
 
 
-	// c.stop;
+	c.stop;
 	c = Task({
 		while {true} {
 			var closedChord = ~chords.choose + ~penta.choose % 12;
 			// closedChord.postln;
-			~octave = Array.rand2(8, 2) * 12;
-			~chord = closedChord + ~octave + 66;
+			~octave = Array.rand2(8, 0) * 12;
+			~chord = closedChord + ~octave + 58;
 			~chord.sort;
 			("Group chord: " ++ ~chord).postln;
 
@@ -109,10 +137,17 @@ s.waitForBoot {
 		}
 	}).play;
 
+	t.stop;
 	t = Task({
 		while {true} {
-			~synth = Synth(\singrain, [\midi, ~chord.choose]);
-			(0.2.rand + 0.13).wait;
+			var attack = ~attackDiff.rand + ~attackLow;
+			var sustain = ~sustainDiff.rand + ~sustainLow;
+			var release = ~releaseDiff.rand + ~releaseLow;
+			var duration = attack + sustain + release;
+			var waitTime = attack + sustain + (2 * release + 0.1).rand;
+			~synth = Synth(\clusterpatch, [\midi, ~noteset.choose, \feedback, ~feedback,
+				\attack, attack, \sustain, sustain, \release, release]);
+			waitTime.wait;
 		}
 	}).play;
 
