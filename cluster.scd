@@ -10,13 +10,15 @@ s.waitForBoot {
 
 	// set up OSC listeners
 	OSCdef(\cluster, {|msg, time, addr|
+		// HOST: register a machine
 		var addrIndex = ~network.indexOfEqual(addr);
 
 		// mark host
 		if (~isHost == false, {
-			"cluster: Marking this machine as cluster host".postln;
+			"cluster: This machine registered cluster host".postln;
+			"cluster: To kill the network run `h.sendMsg('/unregister');`".postln;
 			~isHost = true;
-			c.play;
+			~taskBroadcastNotes.start;
 		});
 
 		// see if machine already registered
@@ -31,13 +33,16 @@ s.waitForBoot {
 			~network.add(addr);
 
 			// update new personality preferences
-			addition = switch (personality)
+			addition = (switch (personality)
 		      {\pessimist} {[2, 0, 1, 1, 1]} // increase pessimists
 			  {\optimist} {[0, 2, 1, 1, 1]} // increase optimists
 			  {\realist} {[0, 0, 1, 2, 2]} // increase cons and progs
 			  {\conservative} { ~personalityWeights.normalize; } // prefer popular
-			  {\progressive} { ~personalityWeights.normalize(min: 1, max: 0); }; // prefer unpopular
-			~personalityWeights = (~personalityWeights + addition.normalizeSum).normalizeSum;
+		 	  {\progressive} { ~personalityWeights.normalize(min: 1, max: 0); } // prefer unpopular
+			).normalizeSum;
+			if (addition[0].isNaN == false, {
+				~personalityWeights = (~personalityWeights + addition.normalizeSum).normalizeSum
+			});
 		}, {
 			"cluster: Machine #% with IP '%' already registered"
 			  .format(addrIndex, ~network[addrIndex].ip).postln;
@@ -45,7 +50,7 @@ s.waitForBoot {
 	}, '/register');
 
 	OSCdef(\cluster2, {|msg, time, addr|
-		// assign personality information to computer
+		// CLIENT: assign personality to computer
 		~personality = msg[2];
 		switch (msg[2],
 			\pessimist, {
@@ -100,17 +105,45 @@ s.waitForBoot {
 				~releaseDiff = 0.1;
 		});
 
-		"cluster: This computer registered as #% with '%' personality"
+		"cluster: This machine registered as #% with '%' personality"
 	    	.format(msg[1], ~personality).postln;
-		t.start;
-	}, '/personality'); // def style
-
+		"cluster: To unregister run `h.sendMsg('/unregister');`".postln;
+		~taskPlayNotes.start;
+	}, '/personality');
 
 	OSCdef(\cluster3, {|msg, time, addr|
-		// receive note assignment
+		// CLIENT: receive note assignment
 		~noteset = [msg[1], msg[2]] + (12 * [~octaves.choose, ~octaves.choose]);
 		"cluster: Noteset assigned: %".format(~noteset).postln;
-	}, '/assign'); // def style
+	}, '/assign');
+
+	OSCdef(\cluster4, {|msg, time, addr|
+		// HOST: unregister a machine or kill network
+		var addrIndex = ~network.indexOfEqual(addr);
+		if (addrIndex != nil, {
+			if (addr.ip == ~hostAddr, {
+				// if the machine requesting the unregistry is host, kill the network
+				"cluster: Broadcasting network hangup".postln;
+				~taskBroadcastNotes.stop;
+				~network.do{ |netAddr|
+					netAddr.sendMsg('/kill', "The host has killed the network");
+				};
+				~network = List[];
+				~isHost = false;
+			}, {
+				"cluster: Unregistering machine #% with IP '%'".format(addrIndex, addr).postln;
+				~network.swap(addrIndex, 0);
+				~network = ~network.drop(1);
+				addr.sendMsg('/kill', "This machine unregistered");
+			});
+		});
+	}, '/unregister');
+
+	OSCdef(\cluster5, {|msg, time, addr|
+		// CLIENT: be killed by the host (for various reasons)
+		"cluster: %".format(msg[1]);
+		~taskPlayNotes.stop;
+	}, '/kill');
 
 	SynthDef(\clusterpatch, { |midi, feedback, attack, sustain, release|
 		var signal = SinOscFB.ar(midi.midicps, feedback, 1)
@@ -120,11 +153,11 @@ s.waitForBoot {
 
 	~isHost = false;
 	~network = List[];
-	c = Task({
+	~taskBroadcastNotes = Task({
 		while {true} {
 			var chord = (~chords.choose + ~penta.choose % 12) + ~centerNote;
 			chord.sort;
-			"cluster: Broadcasting chord: %".format(chord).postln;
+			"cluster: Broadcasting notesets from chord: %".format(chord).postln;
 			~network.do{ |addr|
 				addr.sendMsg('/assign', chord[chord.size.rand], chord[chord.size.rand]);
 			};
@@ -132,7 +165,7 @@ s.waitForBoot {
 		}
 	});
 
-	t = Task({
+	~taskPlayNotes = Task({
 		while {true} {
 			var feedback = ~feedbackDiff.rand + ~feedbackLow;
 			var attack   =   ~attackDiff.rand +   ~attackLow;
@@ -191,3 +224,8 @@ s.waitForBoot {
 	h.sendMsg('/register');
 };
 );
+
+(
+h.sendMsg('/unregister');
+);
+
